@@ -3,9 +3,15 @@ name = "kaitai"
 version = "0.1.0"
 authors = ["Kai Michaelis <kai.michaelis@9elements.com>"]
 edition = "2018"
+build = "build.rs" # LALRPOP preprocessing
 
 [dependencies]
 yaml-rust = "0.4"
 serde_yaml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 charsets = "0.2"
+regex = "1"
+lalrpop-util = "0.16.3"
+
+[build-dependencies]
+lalrpop = "0.16.3"
