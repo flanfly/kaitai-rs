@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
@@ -7,6 +6,8 @@ use regex::Regex;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_yaml::{Mapping, Sequence, Value};
+
+use crate::expr::{self, Expr};
 
 #[derive(Debug)]
 pub struct Terminator {
@@ -28,7 +29,7 @@ pub enum Type {
         contents: Option<Box<[u8]>>,
     },
     String {
-        size: Option<String>,
+        size: Option<Expr>,
         encoding: Charset,
         eos_error: bool,
         terminator: Option<Terminator>,
@@ -38,7 +39,7 @@ pub enum Type {
         endian: Endianess,
     },
     Bytes {
-        size: Option<String>,
+        size: Option<Expr>,
         eos_error: bool,
         terminator: Option<Terminator>,
         process: Option<String>,
@@ -47,29 +48,29 @@ pub enum Type {
         name: String,
     },
     Switch {
-        pivot: String,
-        options: HashMap<String, String>,
+        pivot: Expr,
+        options: Vec<(Expr, Expr)>,
     },
 }
 
 #[derive(Debug)]
 pub enum Repeat {
     Eos,
-    Until(String),
-    Fixed(String),
+    Until(Expr),
+    Fixed(Expr),
 }
 
 #[derive(Debug)]
 pub enum Instance {
-    Computed { value: Box<[u8]> },
-    Positioned { position: String, io: Option<String> },
+    Computed { value: Expr },
+    Positioned { position: Expr, io: Option<Expr> },
 }
 
 #[derive(Debug)]
 pub struct Attribute {
     id: String,
     repeat: Option<Repeat>,
-    if_expr: Option<String>,
+    if_expr: Option<Expr>,
     doc: Option<String>,
     doc_xref: Option<String>,
     contents: Option<Box<[u8]>>,
@@ -95,52 +96,33 @@ impl Attribute {
     }
 
     pub fn newInstance(id: String, map: &Mapping, endian: Endianess, charset: Charset) -> Result<Attribute, String> {
-        let value = map.get(&"value".to_string().into());
-        let io = map.get(&"io".to_string().into()).and_then(Value::as_str).map(str::to_string);
-        let pos = map.get(&"pos".to_string().into());
+        let value = map.get(&"value".to_string().into()).and_then(|x| Expr::from_yaml(x).ok());
+        let io = map.get(&"io".to_string().into()).and_then(|x| Expr::from_yaml(x).ok());
+        let pos = map.get(&"pos".to_string().into()).and_then(|x| Expr::from_yaml(x).ok());
 
         match (pos, value) {
             (Some(pos), None) => {
                 let mut attr = Self::new(map, endian, charset)?;
-                let pos = match pos {
-                    Value::String(s) => s.to_string(),
-                    Value::Number(n) => format!("{}", n.as_u64().unwrap()),
-                    _ => {
-                        return Err(format!("illegal value"));
-                    }
-                };
 
                 attr.id = id;
                 attr.instance = Some(Instance::Positioned { position: pos, io: io });
                 Ok(attr)
             }
-            (None, Some(value)) => {
-                let value = match value {
-                    Value::String(s) => s.to_string(),
-                    Value::Number(n) => format!("{}", n.as_u64().unwrap()),
-                    _ => {
-                        return Err(format!("illegal value"));
-                    }
-                };
-
-                Ok(Attribute {
-                    id: id,
-                    repeat: None,
-                    if_expr: None,
-                    doc: None,
-                    doc_xref: None,
-                    contents: None,
-                    typ: Type::String {
-                        size: Some(format!("{}", value.len())),
-                        eos_error: true,
-                        encoding: charset,
-                        terminator: None,
-                    },
-                    instance: Some(Instance::Computed {
-                        value: Vec::from(value.as_bytes()).into_boxed_slice(),
-                    }),
-                })
-            }
+            (None, Some(value)) => Ok(Attribute {
+                id: id,
+                repeat: None,
+                if_expr: None,
+                doc: None,
+                doc_xref: None,
+                contents: None,
+                typ: Type::String {
+                    size: None,
+                    eos_error: true,
+                    encoding: charset,
+                    terminator: None,
+                },
+                instance: Some(Instance::Computed { value: value }),
+            }),
             (Some(_), Some(_)) => Err(format!("both pos and value specified for instance")),
             (None, None) => Err(format!("neither pos nor value specified for instance")),
         }
@@ -152,25 +134,28 @@ impl Attribute {
         let float_pat = Regex::new(r"^f(4|8)(le|be)?$").unwrap();
         let repeat = match map.get(&"repeat".to_string().into()) {
             Some(x) if x == "eos" => Some(Repeat::Eos),
-            Some(x) if x == "until" => match map.get(&"repeat-until".to_string().into()).and_then(Value::as_str) {
-                Some(x) => Some(Repeat::Until(x.to_string())),
-                None => {
-                    return Err(format!("missing repeat-until field"));
-                }
-            },
-            Some(x) if x == "expr" => match map.get(&"repeat-expr".to_string().into()) {
-                Some(Value::String(x)) => Some(Repeat::Fixed(x.to_string())),
-                Some(Value::Number(x)) => Some(Repeat::Fixed(format!("{}", x.as_u64().unwrap()))),
-                Some(_) | None => {
-                    return Err(format!("missing repeat-expr field"));
-                }
-            },
+            Some(x) if x == "until" => {
+                let until = map
+                    .get(&"repeat-until".to_string().into())
+                    .ok_or(format!("missing repeat-until field"))
+                    .and_then(Expr::from_yaml)?;
+
+                Some(Repeat::Until(until))
+            }
+            Some(x) if x == "expr" => {
+                let ex = map
+                    .get(&"repeat-expr".to_string().into())
+                    .ok_or(format!("missing repeat-expr field"))
+                    .and_then(Expr::from_yaml)?;
+
+                Some(Repeat::Fixed(ex))
+            }
             Some(x) => {
                 return Err(format!("illegal repeat value {:?}", x));
             }
             None => None,
         };
-        let if_expr = map.get(&"if".to_string().into()).and_then(Value::as_str).map(str::to_string);
+        let if_expr = map.get(&"if".to_string().into()).and_then(|x| Expr::from_yaml(x).ok());
         let doc = map.get(&"doc".to_string().into()).and_then(Value::as_str).map(str::to_string);
         let doc_xref = map.get(&"doc-xref".to_string().into()).and_then(Value::as_str).map(str::to_string);
         let contents = match map.get(&"contents".to_string().into()) {
@@ -200,14 +185,10 @@ impl Attribute {
         let typ = match typ {
             // byte array
             None => {
-                let size = match map.get(&"size".to_string().into()) {
-                    Some(Value::Number(n)) if n.is_u64() => Some(format!("{}", n.as_u64().unwrap())),
-                    Some(Value::String(s)) => Some(s.to_string()),
-                    None => None,
-                    _ => {
-                        return Err(format!("illegal size field value"));
-                    }
-                };
+                let size = map
+                    .get(&"size".to_string().into())
+                    .ok_or(format!("illegal size field value"))
+                    .and_then(Expr::from_yaml);
                 let eos = map.get(&"size-eos".to_string().into()).and_then(Value::as_bool).unwrap_or(false);
                 let eos_err = map.get(&"eos-error".to_string().into()).and_then(Value::as_bool).unwrap_or(true);
                 let process = map.get(&"process".to_string().into()).and_then(Value::as_str).map(str::to_string);
@@ -215,9 +196,9 @@ impl Attribute {
                 let consume = map.get(&"consume".to_string().into()).and_then(Value::as_bool).unwrap_or(false);
                 let include = map.get(&"include".to_string().into()).and_then(Value::as_bool).unwrap_or(false);
 
-                if size.is_some() {
+                if size.is_ok() {
                     Type::Bytes {
-                        size: size,
+                        size: size.ok(),
                         eos_error: eos_err,
                         terminator: None,
                         process: process,
@@ -242,7 +223,7 @@ impl Attribute {
                     }
                 } else if contents.is_some() {
                     Type::Bytes {
-                        size: Some(format!("{}", contents.as_ref().unwrap().len())),
+                        size: Some(Expr::Value(expr::Value::Unsigned(contents.as_ref().unwrap().len() as u64))),
                         eos_error: eos_err,
                         terminator: None,
                         process: process,
@@ -284,29 +265,24 @@ impl Attribute {
             }
             // string
             Some(Value::String(s)) if s == "str" || s == "strz" => {
-                let size = match map.get(&"size".to_string().into()) {
-                    Some(Value::Number(n)) if n.is_u64() => Some(format!("{}", n.as_u64().unwrap())),
-                    Some(Value::String(s)) => Some(s.to_string()),
-                    None => None,
-                    _ => {
-                        return Err(format!("illegal size field value"));
-                    }
-                };
+                let size = map
+                    .get(&"size".to_string().into())
+                    .ok_or(format!("illegal size field value"))
+                    .and_then(Expr::from_yaml);
                 let eos = map.get(&"size-eos".to_string().into()).and_then(Value::as_bool).unwrap_or(false);
                 let eos_err = map.get(&"eos-error".to_string().into()).and_then(Value::as_bool).unwrap_or(true);
                 let enc = map
                     .get(&"encoding".to_string().into())
                     .and_then(Value::as_str)
-                    .ok_or(format!("illegal charset spec"))
-                    .and_then(|x| Charset::from_str(x).map_err(|_| format!("unknown charset")))
+                    .and_then(|x| Charset::from_str(x).ok())
                     .unwrap_or(charset);
                 let term = map.get(&"terminator".to_string().into()).and_then(Value::as_u64);
                 let consume = map.get(&"consume".to_string().into()).and_then(Value::as_bool).unwrap_or(false);
                 let include = map.get(&"include".to_string().into()).and_then(Value::as_bool).unwrap_or(false);
 
-                if size.is_some() {
+                if size.is_ok() {
                     Type::String {
-                        size: size,
+                        size: size.ok(),
                         eos_error: eos_err,
                         encoding: enc,
                         terminator: None,
@@ -331,7 +307,7 @@ impl Attribute {
                     }
                 } else if contents.is_some() {
                     Type::String {
-                        size: Some(format!("{}", contents.as_ref().unwrap().len())),
+                        size: Some(Expr::Value(expr::Value::Unsigned(contents.as_ref().unwrap().len() as u64))),
                         eos_error: eos_err,
                         encoding: enc,
                         terminator: None,
@@ -346,27 +322,19 @@ impl Attribute {
             Some(Value::Mapping(m)) => {
                 let pivot = m
                     .get(&"switch-on".to_string().into())
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-                    .ok_or(format!("missing switch-on field"))?;
+                    .ok_or(format!("missing switch-on field"))
+                    .and_then(Expr::from_yaml)?;
                 let opts = m
                     .get(&"cases".to_string().into())
                     .and_then(Value::as_mapping)
                     .ok_or(format!("missing cases field"))?;
-                let mut m = HashMap::<String, String>::with_capacity(opts.len());
+                let mut m = Vec::<_>::with_capacity(opts.len());
 
-                for pair in opts {
-                    match pair {
-                        (Value::String(k), Value::String(v)) => {
-                            m.insert(k.to_string(), v.to_string());
-                        }
-                        (Value::Number(n), Value::String(v)) => {
-                            m.insert(format!("{}", n.as_i64().unwrap()), v.to_string());
-                        }
-                        _ => {
-                            return Err(format!("illegal case {:?}", pair));
-                        }
-                    }
+                for (k, v) in opts {
+                    let key = Expr::from_yaml(k)?;
+                    let value = Expr::from_yaml(v)?;
+
+                    m.push((key, value));
                 }
 
                 Type::Switch { pivot: pivot, options: m }

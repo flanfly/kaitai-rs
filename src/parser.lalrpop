@@ -6,135 +6,140 @@ grammar;
 
 pub Expression: Expr = {
   <e:ConditionalExpr> => e,
-  //<e:UnaryExpr> => e,
-  //<e:PrimaryExpr> => e,
-}
+};
 
 ConditionalExpr: Expr = {
   <e:LogicalOrExpr> => e,
   <cond:LogicalOrExpr> "?" <t:Expression> ":" <f:ConditionalExpr> => Expr::Condition{ condition: Box::new(cond), yes: Box::new(t), no: Box::new(f) },
-}
+};
 
 LogicalOrExpr: Expr = {
   <e:LogicalAndExpr> => e,
   <left:LogicalOrExpr> "||" <right:LogicalAndExpr> => Expr::Binop{ op: Binop::LogicOr, left: Box::new(left), right: Box::new(right) },
-}
+  <left:LogicalOrExpr> "or" <right:LogicalAndExpr> => Expr::Binop{ op: Binop::LogicOr, left: Box::new(left), right: Box::new(right) },
+};
 
 LogicalAndExpr: Expr = {
   <e:BitwiseOrExpr> => e,
   <left:LogicalAndExpr> "&&" <right:BitwiseOrExpr> => Expr::Binop{ op: Binop::LogicAnd, left: Box::new(left), right: Box::new(right) },
-}
+  <left:LogicalAndExpr> "and" <right:BitwiseOrExpr> => Expr::Binop{ op: Binop::LogicAnd, left: Box::new(left), right: Box::new(right) },
+};
 
 BitwiseOrExpr: Expr = {
   <e:BitwiseXorExpr> => e,
   <left:BitwiseOrExpr> "|" <right:BitwiseXorExpr> => Expr::Binop{ op: Binop::BitwiseOr, left: Box::new(left), right: Box::new(right) },
-}
+};
 
 BitwiseXorExpr: Expr = {
   <e:BitwiseAndExpr> => e,
   <left:BitwiseXorExpr> "^" <right:BitwiseAndExpr> => Expr::Binop{ op: Binop::BitwiseXor, left: Box::new(left), right: Box::new(right) ,}
-}
+};
 
 BitwiseAndExpr: Expr = {
   <e:EqualityExpr> => e,
   <left:BitwiseAndExpr> "&" <right:EqualityExpr> => Expr::Binop{ op: Binop::BitwiseAnd, left: Box::new(left), right: Box::new(right) },
-}
+};
 
 EqualityExpr: Expr = {
   <e:RelationalExpr> => e,
   <left:EqualityExpr> "==" <right:RelationalExpr> => Expr::Binop{ op: Binop::Equal, left: Box::new(left), right: Box::new(right) },
   <left:EqualityExpr> "!=" <right:RelationalExpr> => Expr::Binop{ op: Binop::NotEqual, left: Box::new(left), right: Box::new(right) },
-}
+};
 
 RelationalExpr: Expr = {
   <e:ShiftExpr> => e,
   <left:RelationalExpr> "<" <right:ShiftExpr> => Expr::Binop{ op: Binop::Less, left: Box::new(left), right: Box::new(right) },
   <left:RelationalExpr> "<=" <right:ShiftExpr> => Expr::Binop{ op: Binop::LessOrEqual, left: Box::new(left), right: Box::new(right) },
-  <left:RelationalExpr> ">=" <right:ShiftExpr> => Expr::Binop{ op: Binop::Greater, left: Box::new(left), right: Box::new(right) },
-  <left:RelationalExpr> ">" <right:ShiftExpr> => Expr::Binop{ op: Binop::GreaterOrEqual, left: Box::new(left), right: Box::new(right) },
-}
+  <left:RelationalExpr> ">" <right:ShiftExpr> => Expr::Binop{ op: Binop::Greater, left: Box::new(left), right: Box::new(right) },
+  <left:RelationalExpr> ">=" <right:ShiftExpr> => Expr::Binop{ op: Binop::GreaterOrEqual, left: Box::new(left), right: Box::new(right) },
+};
 
 ShiftExpr: Expr = {
   <e:AdditiveExpr> => e,
   <left:ShiftExpr> ">>" <right:AdditiveExpr> => Expr::Binop{ op: Binop::RightShift, left: Box::new(left), right: Box::new(right) },
   <left:ShiftExpr> "<<" <right:AdditiveExpr> => Expr::Binop{ op: Binop::LeftShift, left: Box::new(left), right: Box::new(right) },
-}
+};
 
 AdditiveExpr: Expr = {
   <e:MultiplicativeExpr> => e,
   <left:AdditiveExpr> "+" <right:MultiplicativeExpr> => Expr::Binop{ op: Binop::Add, left: Box::new(left), right: Box::new(right) },
   <left:AdditiveExpr> "-" <right:MultiplicativeExpr> => Expr::Binop{ op: Binop::Subtract, left: Box::new(left), right: Box::new(right) },
-}
+};
 
 MultiplicativeExpr: Expr = {
   <e:UnaryExpr> => e,
   <left:MultiplicativeExpr> "*" <right:UnaryExpr> => Expr::Binop{ op: Binop::Multiply, left: Box::new(left), right: Box::new(right) },
   <left:MultiplicativeExpr> "/" <right:UnaryExpr> => Expr::Binop{ op: Binop::Divide, left: Box::new(left), right: Box::new(right) },
   <left:MultiplicativeExpr> "%" <right:UnaryExpr> => Expr::Binop{ op: Binop::Modulo, left: Box::new(left), right: Box::new(right) },
-}
+};
 
 UnaryExpr: Expr = {
   <e:PostfixExpr> => e,
   "not" <e:UnaryExpr> => Expr::Unop{ op: Unop::LogicNot, value: Box::new(e) },
-}
+  "-" <s:UnaryExpr> => Expr::Binop{ op: Binop::Multiply, left: Box::new(Expr::Value(Value::Signed(-1))), right: Box::new(s) },
+};
 
 PrimaryExpr: Expr = {
-  <i:Identifier> => Expr::Field(i),
+  <i:Identifier> => Expr::Variable(i),
   <v:Literal> => Expr::Value(v),
-  "(" <e:UnaryExpr> ")" => e,
-}
+  "(" <e:Expression> ")" => e,
+};
 
 PostfixExpr: Expr = {
   <e:PrimaryExpr> => e,
   <e:PostfixExpr> "(" ")" => Expr::Call{ function: Box::new(e), arguments: vec![] },
   <e:PostfixExpr> "(" <a:ArgumentList> ")" => Expr::Call{ function: Box::new(e), arguments: a },
-}
+  <e:PostfixExpr> "[" <s:Expression> "]" => Expr::Subscript{ array: Box::new(e), subscript: Box::new(s) },
+  <e:PostfixExpr> "." <id:Identifier> => Expr::Field{ object: Box::new(e), field: id },
+  <e:PostfixExpr> ".as<" <typ:Identifier> ">" => Expr::Typecast{ object: Box::new(e), typ: typ },
+  <enu:Identifier> "::" <opt:Identifier> => Expr::Enum{ base: enu, option: opt },
+};
 
 ArgumentList: Vec<Expr> = {
   <e:Expression> => vec![e],
   <e:Expression> "," <es:ArgumentList> => {
     let mut ret = vec![e];
+    let mut es = es;
     ret.append(&mut es);
     ret
   },
-}
+};
 
 Identifier: String = {
   <i:r"[a-zA-Z_][a-zA-Z_0-9]*"> => i.to_string(),
-}
+};
 
 Literal: Value = {
-  <i:SignedTerm> => Value::Signed(i64::from_str(&i).unwrap()),
-  <f:FloatTerm> => Value::Float(f64::from_str(&f).unwrap()),
- "\"" <s:StringLiteral> => Value::String(s),
+  <i:SignedTerm> => {
+    let i = i.replace("_", "");
+    if i.starts_with("0x") {
+      Value::Signed(i64::from_str_radix(&i[2..], 16).unwrap())
+    } else if i.starts_with("0b") {
+      Value::Signed(i64::from_str_radix(&i[2..], 2).unwrap())
+    } else if i != "0" && i.starts_with("0") {
+      Value::Signed(i64::from_str_radix(&i[1..], 8).unwrap())
+    } else {
+      Value::Signed(i64::from_str(&i).unwrap())
+    }
+  },
+  <f:FloatTerm> => {
+    Value::Float(f64::from_str(&f).unwrap())
+  },
+  <s:r#""[[:print:]]+""#> => Value::String(s.to_string()),
   "true" => Value::Bool(true),
   "false" => Value::Bool(true),
-}
+};
 
-StringCharacter: String = {
-  <c:r"[+!@#$%^&*()+=:;|{}-]+"> => c.to_string(),
-  <c:SignedTerm> => c,
-  <c:Identifier> => c,
-  <r#"\\t"#> => "\t".to_string(),
-  <r#"\\n"#> => "\n".to_string(),
-  <r#"\\r"#> => "\r".to_string(),
-  <r#"\\""#> => "\"".to_string(),
-  <r#"\\"#> => "\\".to_string(),
-}
-
-StringLiteral: String = {
-  <c:StringCharacter> "\"" => c.to_string(),
-  <c:StringCharacter> <cs:StringLiteral> => c + &cs,
-}
-
-pub SignedTerm: String = {
+SignedTerm: String = {
   <n:r"0x[0-9a-fA-F_]+"> => n.to_string(),
+  <n:r"0b[0-1_]+"> => n.to_string(),
   <n:r"0[0-7_]+"> => n.to_string(),
-  <n:r"[1-9][0-9_]+"> => n.to_string(),
-}
+  <n:r"[1-9][0-9_]*"> => n.to_string(),
+  "0" => "0".to_string(),
+};
 
 FloatTerm: String = {
   <f:r"\.[0-9]+"> => f.to_string(),
   <f:r"[0-9]+\.[0-9]*"> => f.to_string(),
   <f:r"[0-9]+(e|E)(-|\+)+[0-9]+"> => f.to_string(),
-}
+};
