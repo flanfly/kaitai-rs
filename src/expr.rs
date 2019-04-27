@@ -131,6 +131,21 @@ mod tests {
             Expr::Value(Value::String(ref s)) if s == "test" => {}
             _ => unreachable!(),
         }
+        let ex = Expr::parse("\"te-st\"").unwrap();
+        match ex {
+            Expr::Value(Value::String(ref s)) if s == "te-st" => {}
+            _ => unreachable!(),
+        }
+        let ex = Expr::parse("'te-st'").unwrap();
+        match ex {
+            Expr::Value(Value::String(ref s)) if s == "te-st" => {}
+            _ => unreachable!(),
+        }
+        let ex = Expr::parse("'test'").unwrap();
+        match ex {
+            Expr::Value(Value::String(ref s)) if s == "test" => {}
+            _ => unreachable!(),
+        }
         let ex = Expr::parse("a - b - 1").unwrap();
         match ex {
             Expr::Binop { op: Binop::Subtract, .. } => {}

@@ -125,7 +125,20 @@ Literal: Value = {
   <f:FloatTerm> => {
     Value::Float(f64::from_str(&f).unwrap())
   },
-  <s:r#""[[:print:]]+""#> => Value::String(s.to_string()),
+  <s:r#""(\\["nt\\]|['\w\d\s!"\#$%&'()*+,\-./:;<=>?@\[\]^_`{|}~])*""#> => {
+    let mut s = s.to_string();
+    s.remove(0);
+    s.remove(s.len() - 1);
+
+    Value::String(s)
+  },
+  <s:r#"'(\\['nt\\]|["\w\d\s!"\#$%&'()*+,\-./:;<=>?@\[\]^_`{|}~])*'"#> => {
+    let mut s = s.to_string();
+    s.remove(0);
+    s.remove(s.len() - 1);
+
+    Value::String(s)
+  },
   "true" => Value::Bool(true),
   "false" => Value::Bool(true),
 };
