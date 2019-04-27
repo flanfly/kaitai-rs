@@ -223,7 +223,7 @@ impl Attribute {
                     }
                 } else if contents.is_some() {
                     Type::Bytes {
-                        size: Some(Expr::Value(expr::Value::Unsigned(contents.as_ref().unwrap().len() as u64))),
+                        size: Some(Expr::Value(expr::Value::Integer(contents.as_ref().unwrap().len() as i64))),
                         eos_error: eos_err,
                         terminator: None,
                         process: process,
@@ -307,7 +307,7 @@ impl Attribute {
                     }
                 } else if contents.is_some() {
                     Type::String {
-                        size: Some(Expr::Value(expr::Value::Unsigned(contents.as_ref().unwrap().len() as u64))),
+                        size: Some(Expr::Value(expr::Value::Integer(contents.as_ref().unwrap().len() as i64))),
                         eos_error: eos_err,
                         encoding: enc,
                         terminator: None,

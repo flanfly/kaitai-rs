@@ -76,7 +76,7 @@ MultiplicativeExpr: Expr = {
 UnaryExpr: Expr = {
   <e:PostfixExpr> => e,
   "not" <e:UnaryExpr> => Expr::Unop{ op: Unop::LogicNot, value: Box::new(e) },
-  "-" <s:UnaryExpr> => Expr::Binop{ op: Binop::Multiply, left: Box::new(Expr::Value(Value::Signed(-1))), right: Box::new(s) },
+  "-" <s:UnaryExpr> => Expr::Binop{ op: Binop::Multiply, left: Box::new(Expr::Value(Value::Integer(-1))), right: Box::new(s) },
 };
 
 PrimaryExpr: Expr = {
@@ -110,16 +110,16 @@ Identifier: String = {
 };
 
 Literal: Value = {
-  <i:SignedTerm> => {
+  <i:IntegerTerm> => {
     let i = i.replace("_", "");
     if i.starts_with("0x") {
-      Value::Signed(i64::from_str_radix(&i[2..], 16).unwrap())
+      Value::Integer(i64::from_str_radix(&i[2..], 16).unwrap())
     } else if i.starts_with("0b") {
-      Value::Signed(i64::from_str_radix(&i[2..], 2).unwrap())
+      Value::Integer(i64::from_str_radix(&i[2..], 2).unwrap())
     } else if i != "0" && i.starts_with("0") {
-      Value::Signed(i64::from_str_radix(&i[1..], 8).unwrap())
+      Value::Integer(i64::from_str_radix(&i[1..], 8).unwrap())
     } else {
-      Value::Signed(i64::from_str(&i).unwrap())
+      Value::Integer(i64::from_str(&i).unwrap())
     }
   },
   <f:FloatTerm> => {
@@ -143,7 +143,7 @@ Literal: Value = {
   "false" => Value::Bool(true),
 };
 
-SignedTerm: String = {
+IntegerTerm: String = {
   <n:r"0x[0-9a-fA-F_]+"> => n.to_string(),
   <n:r"0b[0-1_]+"> => n.to_string(),
   <n:r"0[0-7_]+"> => n.to_string(),

@@ -10,8 +10,7 @@ lalrpop_mod!(pub parser);
 #[derive(Clone, Debug)]
 pub enum Value {
     String(String),
-    Signed(i64),
-    Unsigned(u64),
+    Integer(i64),
     Bool(bool),
     Float(f64),
     Bytes(Box<[u8]>),
@@ -94,7 +93,7 @@ impl Expr {
         match value {
             &serde_yaml::Value::String(ref s) => Self::parse(s),
             &serde_yaml::Value::Bool(b) => Ok(Expr::Value(Value::Bool(b))),
-            &serde_yaml::Value::Number(ref b) if b.is_i64() => Ok(Expr::Value(Value::Signed(b.as_i64().unwrap()))),
+            &serde_yaml::Value::Number(ref b) if b.is_i64() => Ok(Expr::Value(Value::Integer(b.as_i64().unwrap()))),
             v => Err(format!("{:?} is not a value", v)),
         }
     }
@@ -118,7 +117,7 @@ mod tests {
     fn parser() {
         let ex = Expr::parse("32").unwrap();
         match ex {
-            Expr::Value(Value::Signed(32)) => {}
+            Expr::Value(Value::Integer(32)) => {}
             _ => unreachable!(),
         }
         let ex = Expr::parse("32.0").unwrap();
@@ -158,7 +157,7 @@ mod tests {
         }
         let ex = Expr::parse("0").unwrap();
         match ex {
-            Expr::Value(Value::Signed(0)) => {}
+            Expr::Value(Value::Integer(0)) => {}
             _ => unreachable!(),
         }
         let ex = Expr::parse("(num_digits < 6 ? 0 : 1)").unwrap();
@@ -168,7 +167,7 @@ mod tests {
         }
         let ex = Expr::parse("0x1c").unwrap();
         match ex {
-            Expr::Value(Value::Signed(0x1c)) => {}
+            Expr::Value(Value::Integer(0x1c)) => {}
             _ => unreachable!(),
         }
     }
